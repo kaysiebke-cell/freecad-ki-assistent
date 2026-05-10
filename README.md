@@ -9,7 +9,7 @@ Ein KI-gestütztes Dock-Panel für FreeCAD 1.1.1, das Python-Code für 3D-Bautei
 
 ---
 
-![Screenshot – FreeCAD KI-Assistent](DEIN_BILD_LINK_HIER)
+![Screenshot – FreeCAD KI-Assistent](FreeCad.png)
 > *Würfel mit zentraler Bohrung – generiert und angewendet mit einem Klick*
 
 ---

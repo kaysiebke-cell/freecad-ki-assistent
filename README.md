@@ -9,6 +9,11 @@ Ein KI-gestütztes Dock-Panel für FreeCAD 1.1.1, das Python-Code für 3D-Bautei
 
 ---
 
+![Screenshot – FreeCAD KI-Assistent](DEIN_BILD_LINK_HIER)
+> *Würfel mit zentraler Bohrung – generiert und angewendet mit einem Klick*
+
+---
+
 ## Features
 
 - **KI-Code-Generierung** – Bauteil in natürlicher Sprache beschreiben, fertigen Python-Code erhalten
@@ -170,6 +175,12 @@ Mach einen Würfel mit Loch.
 ## Mitwirkende
 
 Entwickelt von **kaysiebke-cell** mit Unterstützung von Claude (Anthropic).
+
+---
+
+## Lizenz
+
+MIT – frei verwendbar und veränderbar.
 
 ---
 

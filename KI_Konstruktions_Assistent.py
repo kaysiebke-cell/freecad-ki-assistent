@@ -1,4 +1,6 @@
 import re
+import base64
+import os
 import FreeCAD as App
 import FreeCADGui as Gui
 
@@ -8,19 +10,25 @@ except ImportError:
     from PySide2 import QtCore, QtWidgets, QtGui
 
 
-# ── Sprache aus FreeCAD erkennen ─────────────────────────────────────────────
+# ── Sprache ───────────────────────────────────────────────────────────────────
+LANG_OVERRIDE = "de"
+
 def _detect_language() -> str:
+    if LANG_OVERRIDE != "auto":
+        return LANG_OVERRIDE[:2].lower()
     try:
-        lang = App.ParamGet(
-            "User parameter:BaseApp/Preferences/General"
-        ).GetString("Language", "en")
-        return lang[:2].lower()   # "de_DE" → "de",  "en_US" → "en"
+        raw = App.ParamGet("User parameter:BaseApp/Preferences/General").GetString("Language", "")
+        if raw:
+            return raw[:2].lower()
     except Exception:
-        return "en"
+        pass
+    for var in ("LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES"):
+        val = os.environ.get(var, "")
+        if val and len(val) >= 2:
+            return val[:2].lower()
+    return "en"
 
 LANG = _detect_language()
-
-# hunspell-Wörterbuch je Sprache
 LANG_TO_DICT = {
     "de": "de_DE", "en": "en_US", "fr": "fr_FR",
     "it": "it_IT", "es": "es_ES", "pt": "pt_PT",
@@ -28,7 +36,6 @@ LANG_TO_DICT = {
 }
 SPELL_LANG = LANG_TO_DICT.get(LANG, "en_US")
 
-# ── Übersetzungen ─────────────────────────────────────────────────────────────
 _T = {
     "de": {
         "source_label":    "KI-Quelle:",
@@ -39,15 +46,15 @@ _T = {
         "spell_active":    "🟢 Rechtschreibprüfung aktiv ({})",
         "spell_missing":   "🔴 hunspell nicht verfügbar  →  sudo apt install hunspell-{}",
         "placeholder":     "Bauteil beschreiben …",
-        "btn_generate":    "⚙ Code generieren",
-        "btn_apply":       "▶ In FreeCAD anwenden",
+        "btn_generate":    "⚙  Code generieren",
+        "btn_apply":       "▶  In FreeCAD anwenden",
         "ready":           "Bereit.",
         "thinking":        "⏳ KI denkt nach …",
         "code_received":   "✅ Code empfangen – bitte prüfen, dann anwenden.",
         "applied":         "✅ Erfolgreich angewendet.",
-        "no_input":        "⚠ Bitte eine Beschreibung eingeben.",
-        "no_code":         "⚠ Kein ausführbarer Code vorhanden.",
-        "running":         "▶ Führe Code aus …",
+        "no_input":        "⚠  Bitte eine Beschreibung eingeben.",
+        "no_code":         "⚠  Kein ausführbarer Code vorhanden.",
+        "running":         "▶  Führe Code aus …",
         "suggestions_for": "📝 Vorschläge für „{}\":",
         "no_suggestions":  "(keine Vorschläge)",
         "ignore":          "🚫 „{}\" ignorieren",
@@ -58,9 +65,16 @@ _T = {
         "no_key":          "Kein API-Key gesetzt!",
         "conn_err":        "Verbindungsfehler",
         "syntax_err":      "Syntaxfehler",
-        "runtime_err":     "Laufzeit Fehler",
+        "runtime_err":     "Laufzeitfehler",
         "syntax_msg":      "Zeile {}: {}\n\n{}",
         "runtime_msg":     "Details:\n{}",
+        "temperature":     "Temperatur:",
+        "history_clear":   "Verlauf leeren",
+        "copy_code":       "Code kopieren",
+        "models_reload":   "Modelle neu laden",
+        "popup_title":     "Zum Chat hinzufügen",
+        "popup_photos":    "Fotos",
+        "popup_files":     "Dateien",
     },
     "en": {
         "source_label":    "AI Source:",
@@ -71,15 +85,15 @@ _T = {
         "spell_active":    "🟢 Spell check active ({})",
         "spell_missing":   "🔴 hunspell not available  →  sudo apt install hunspell-{}",
         "placeholder":     "Describe your part …",
-        "btn_generate":    "⚙ Generate Code",
-        "btn_apply":       "▶ Apply in FreeCAD",
+        "btn_generate":    "⚙  Generate Code",
+        "btn_apply":       "▶  Apply in FreeCAD",
         "ready":           "Ready.",
         "thinking":        "⏳ AI is thinking …",
         "code_received":   "✅ Code received – please review, then apply.",
         "applied":         "✅ Successfully applied.",
-        "no_input":        "⚠ Please enter a description.",
-        "no_code":         "⚠ No executable code available.",
-        "running":         "▶ Executing code …",
+        "no_input":        "⚠  Please enter a description.",
+        "no_code":         "⚠  No executable code available.",
+        "running":         "▶  Executing code …",
         "suggestions_for": "📝 Suggestions for \"{}\":",
         "no_suggestions":  "(no suggestions)",
         "ignore":          "🚫 ignore \"{}\"",
@@ -93,112 +107,41 @@ _T = {
         "runtime_err":     "Runtime Error",
         "syntax_msg":      "Line {}: {}\n\n{}",
         "runtime_msg":     "Details:\n{}",
-    },
-    "fr": {
-        "source_label":    "Source IA :",
-        "ollama":          "Ollama (Local)",
-        "openrouter":      "OpenRouter (Cloud)",
-        "not_checked":     "Non vérifié",
-        "workbench":       "Atelier :",
-        "spell_active":    "🟢 Correction active ({})",
-        "spell_missing":   "🔴 hunspell non disponible  →  sudo apt install hunspell-{}",
-        "placeholder":     "Décrivez votre pièce …",
-        "btn_generate":    "⚙ Générer le code",
-        "btn_apply":       "▶ Appliquer dans FreeCAD",
-        "ready":           "Prêt.",
-        "thinking":        "⏳ L'IA réfléchit …",
-        "code_received":   "✅ Code reçu – vérifiez, puis appliquez.",
-        "applied":         "✅ Appliqué avec succès.",
-        "no_input":        "⚠ Veuillez entrer une description.",
-        "no_code":         "⚠ Aucun code exécutable disponible.",
-        "running":         "▶ Exécution du code …",
-        "suggestions_for": "📝 Suggestions pour \"{}\" :",
-        "no_suggestions":  "(aucune suggestion)",
-        "ignore":          "🚫 ignorer \"{}\"",
-        "connecting":      "Connexion à Ollama …",
-        "offline":         "Ollama inaccessible",
-        "models_found":    "Ollama : {} modèle(s)",
-        "no_models":       "(aucun modèle)",
-        "no_key":          "Aucune clé API définie !",
-        "conn_err":        "Erreur de connexion",
-        "syntax_err":      "Erreur de syntaxe",
-        "runtime_err":     "Erreur d'exécution",
-        "syntax_msg":      "Ligne {} : {}\n\n{}",
-        "runtime_msg":     "Détails :\n{}",
-    },
-    "it": {
-        "source_label":    "Sorgente IA:",
-        "ollama":          "Ollama (Locale)",
-        "openrouter":      "OpenRouter (Cloud)",
-        "not_checked":     "Non verificato",
-        "workbench":       "Area di lavoro:",
-        "spell_active":    "🟢 Controllo ortografico attivo ({})",
-        "spell_missing":   "🔴 hunspell non disponibile  →  sudo apt install hunspell-{}",
-        "placeholder":     "Descrivi il tuo pezzo …",
-        "btn_generate":    "⚙ Genera codice",
-        "btn_apply":       "▶ Applica in FreeCAD",
-        "ready":           "Pronto.",
-        "thinking":        "⏳ L'IA sta pensando …",
-        "code_received":   "✅ Codice ricevuto – controlla e poi applica.",
-        "applied":         "✅ Applicato con successo.",
-        "no_input":        "⚠ Inserisci una descrizione.",
-        "no_code":         "⚠ Nessun codice eseguibile.",
-        "running":         "▶ Esecuzione del codice …",
-        "suggestions_for": "📝 Suggerimenti per \"{}\":",
-        "no_suggestions":  "(nessun suggerimento)",
-        "ignore":          "🚫 ignora \"{}\"",
-        "connecting":      "Connessione a Ollama …",
-        "offline":         "Ollama non raggiungibile",
-        "models_found":    "Ollama: {} modello/i",
-        "no_models":       "(nessun modello)",
-        "no_key":          "Nessuna chiave API!",
-        "conn_err":        "Errore di connessione",
-        "syntax_err":      "Errore di sintassi",
-        "runtime_err":     "Errore di runtime",
-        "syntax_msg":      "Riga {}: {}\n\n{}",
-        "runtime_msg":     "Dettagli:\n{}",
-    },
-    "es": {
-        "source_label":    "Fuente IA:",
-        "ollama":          "Ollama (Local)",
-        "openrouter":      "OpenRouter (Cloud)",
-        "not_checked":     "No comprobado",
-        "workbench":       "Área de trabajo:",
-        "spell_active":    "🟢 Corrección ortográfica activa ({})",
-        "spell_missing":   "🔴 hunspell no disponible  →  sudo apt install hunspell-{}",
-        "placeholder":     "Describe tu pieza …",
-        "btn_generate":    "⚙ Generar código",
-        "btn_apply":       "▶ Aplicar en FreeCAD",
-        "ready":           "Listo.",
-        "thinking":        "⏳ La IA está pensando …",
-        "code_received":   "✅ Código recibido – revisa y luego aplica.",
-        "applied":         "✅ Aplicado con éxito.",
-        "no_input":        "⚠ Por favor, introduce una descripción.",
-        "no_code":         "⚠ No hay código ejecutable.",
-        "running":         "▶ Ejecutando código …",
-        "suggestions_for": "📝 Sugerencias para \"{}\":",
-        "no_suggestions":  "(sin sugerencias)",
-        "ignore":          "🚫 ignorar \"{}\"",
-        "connecting":      "Conectando a Ollama …",
-        "offline":         "Ollama no disponible",
-        "models_found":    "Ollama: {} modelo(s)",
-        "no_models":       "(sin modelos)",
-        "no_key":          "¡No hay clave API!",
-        "conn_err":        "Error de conexión",
-        "syntax_err":      "Error de sintaxis",
-        "runtime_err":     "Error de ejecución",
-        "syntax_msg":      "Línea {}: {}\n\n{}",
-        "runtime_msg":     "Detalles:\n{}",
+        "temperature":     "Temperature:",
+        "history_clear":   "Clear history",
+        "copy_code":       "Copy code",
+        "models_reload":   "Reload models",
+        "popup_title":     "Add to chat",
+        "popup_photos":    "Photos",
+        "popup_files":     "Files",
     },
 }
 
 def t(key: str, *args) -> str:
-    """Gibt den übersetzten String zurück, fällt auf Englisch zurück."""
     s = _T.get(LANG, _T["en"]).get(key, _T["en"].get(key, key))
     return s.format(*args) if args else s
 
 
-# ── Rechtschreibprüfung via hunspell-Subprocess ───────────────────────────────
+# ── Semantische Statusfarben ──────────────────────────────────────────────────
+_STATUS_OK  = "#4caf50"
+_STATUS_ERR = "#f44336"
+_DANGER     = "#c0392b"
+
+_SYN = {
+    "keyword":  "#569cd6",
+    "self":     "#9cdcfe",
+    "builtin":  "#569cd6",
+    "freecad":  "#9cdcfe",
+    "string":   "#ce9178",
+    "comment":  "#6a9955",
+    "number":   "#b5cea8",
+    "funcname": "#dcdcaa",
+    "spell_bg": "#6b1a1a",
+    "spell_fg": "#ff6b6b",
+}
+
+
+# ── Rechtschreibprüfung ───────────────────────────────────────────────────────
 class HunspellChecker:
     def __init__(self, lang=SPELL_LANG):
         import subprocess, shutil
@@ -237,8 +180,8 @@ class HunspellChecker:
             for line in r.stdout.splitlines():
                 if ":" not in line:
                     continue
-                if line.startswith("&") or line.startswith("#"):
-                    return [s.strip() for s in line.split(":",1)[1].split(",") if s.strip()][:7]
+                if line.startswith(("&", "#")):
+                    return [s.strip() for s in line.split(":", 1)[1].split(",") if s.strip()][:7]
         except Exception as e:
             print(f"[Hunspell suggest] {e}")
         return []
@@ -247,9 +190,10 @@ class HunspellChecker:
         self._cache[word] = True
 
     def __del__(self):
-        try: self._proc.terminate()
-        except Exception: pass
-
+        try:
+            self._proc.terminate()
+        except Exception:
+            pass
 
 try:
     _DICT = HunspellChecker(SPELL_LANG)
@@ -264,8 +208,8 @@ class SpellHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, document):
         super().__init__(document)
         self._fmt = QtGui.QTextCharFormat()
-        self._fmt.setBackground(QtGui.QColor("#6b1a1a"))
-        self._fmt.setForeground(QtGui.QColor("#ff6b6b"))
+        self._fmt.setBackground(QtGui.QColor(_SYN["spell_bg"]))
+        self._fmt.setForeground(QtGui.QColor(_SYN["spell_fg"]))
 
     def highlightBlock(self, text):
         if _DICT is None:
@@ -293,36 +237,34 @@ class SpellTextEdit(QtWidgets.QTextEdit):
             cursor = self.cursorForPosition(event.pos())
             cursor.select(QtGui.QTextCursor.WordUnderCursor)
             word = re.sub(r"[^\w\u00C0-\u024F]", "", cursor.selectedText())
-            if word and len(word) >= 3:
-                is_wrong = not _DICT.check(word)
-                if is_wrong:
-                    suggestions = _DICT.suggest(word)
-                    QAction = getattr(QtGui, 'QAction', None) or QtWidgets.QAction
-                    first = menu.actions()[0] if menu.actions() else None
-                    menu.insertSeparator(first)
-                    title = QAction(t("suggestions_for", word), menu)
-                    title.setEnabled(False)
-                    menu.insertAction(first, title)
-                    menu.insertSeparator(first)
-                    if suggestions:
-                        for s in suggestions:
-                            act = QAction(f"✔ {s}", menu)
-                            def make_replacer(repl, c=QtGui.QTextCursor(cursor)):
-                                def do():
-                                    c.insertText(repl)
-                                    self._highlighter.rehighlight()
-                                return do
-                            act.triggered.connect(make_replacer(s))
-                            menu.insertAction(first, act)
-                    else:
-                        na = QAction(t("no_suggestions"), menu)
-                        na.setEnabled(False)
-                        menu.insertAction(first, na)
-                    menu.insertSeparator(first)
-                    ign = QAction(t("ignore", word), menu)
-                    ign.triggered.connect(lambda _, w=word: self._ignore_word(w))
-                    menu.insertAction(first, ign)
-                    menu.insertSeparator(first)
+            if word and len(word) >= 3 and not _DICT.check(word):
+                suggestions = _DICT.suggest(word)
+                QAction = getattr(QtGui, 'QAction', None) or QtWidgets.QAction
+                first = menu.actions()[0] if menu.actions() else None
+                menu.insertSeparator(first)
+                title = QAction(t("suggestions_for", word), menu)
+                title.setEnabled(False)
+                menu.insertAction(first, title)
+                menu.insertSeparator(first)
+                if suggestions:
+                    for s in suggestions:
+                        act = QAction(f"✔ {s}", menu)
+                        def make_replacer(repl, c=QtGui.QTextCursor(cursor)):
+                            def do():
+                                c.insertText(repl)
+                                self._highlighter.rehighlight()
+                            return do
+                        act.triggered.connect(make_replacer(s))
+                        menu.insertAction(first, act)
+                else:
+                    na = QAction(t("no_suggestions"), menu)
+                    na.setEnabled(False)
+                    menu.insertAction(first, na)
+                menu.insertSeparator(first)
+                ign = QAction(t("ignore", word), menu)
+                ign.triggered.connect(lambda _, w=word: self._ignore_word(w))
+                menu.insertAction(first, ign)
+                menu.insertSeparator(first)
         menu.exec(event.globalPos())
 
     def _ignore_word(self, word):
@@ -333,33 +275,35 @@ class SpellTextEdit(QtWidgets.QTextEdit):
             pass
 
 
-# ── Syntax-Highlighter (Code-Anzeige) ────────────────────────────────────────
+# ── Python-Syntax-Highlighter ─────────────────────────────────────────────────
 class PythonHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, document):
         super().__init__(document)
         self.rules = []
+
         def add(pattern, color, bold=False, italic=False):
             fmt = QtGui.QTextCharFormat()
             fmt.setForeground(QtGui.QColor(color))
             if bold:   fmt.setFontWeight(QtGui.QFont.Bold)
             if italic: fmt.setFontItalic(True)
             self.rules.append((re.compile(pattern), fmt))
+
         add(r'\b(False|None|True|and|as|assert|async|await|break|class|'
             r'continue|def|del|elif|else|except|finally|for|from|global|'
             r'if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|'
-            r'try|while|with|yield)\b',                   "#569cd6", bold=True)
-        add(r'\bself\b',                                  "#9cdcfe")
-        add(r'\b(App|Gui|Part|PartDesign|Sketcher|'
-            r'Vector|Placement|Rotation|doc)\b',          "#9cdcfe", bold=True)
+            r'try|while|with|yield)\b',                   _SYN["keyword"], bold=True)
+        add(r'\bself\b',                                  _SYN["self"])
+        add(r'\b(App|Gui|Part|PartDesign|Sketcher|FreeCAD|FreeCADGui|'
+            r'Vector|Placement|Rotation|doc)\b',          _SYN["freecad"], bold=True)
         add(r'\b(abs|all|any|bool|dict|enumerate|float|'
             r'int|len|list|map|max|min|print|range|'
-            r'round|set|sorted|str|sum|tuple|type|zip)\b',"#569cd6")
-        add(r'"[^"\\]*(\\.[^"\\]*)*"',                   "#ce9178")
-        add(r"'[^'\\]*(\\.[^'\\]*)*'",                   "#ce9178")
-        add(r'#[^\n]*',                                   "#6a9955", italic=True)
-        add(r'\b[0-9]+\.?[0-9]*\b',                      "#b5cea8")
-        add(r'(?<=def )\w+',                              "#dcdcaa")
-        add(r'(?<=class )\w+',                            "#dcdcaa")
+            r'round|set|sorted|str|sum|tuple|type|zip)\b', _SYN["builtin"])
+        add(r'"[^"\\]*(\\.[^"\\]*)*"',                   _SYN["string"])
+        add(r"'[^'\\]*(\\.[^'\\]*)*'",                   _SYN["string"])
+        add(r'#[^\n]*',                                   _SYN["comment"], italic=True)
+        add(r'\b[0-9]+\.?[0-9]*\b',                      _SYN["number"])
+        add(r'(?<=def )\w+',                              _SYN["funcname"])
+        add(r'(?<=class )\w+',                            _SYN["funcname"])
 
     def highlightBlock(self, text):
         for pattern, fmt in self.rules:
@@ -367,16 +311,231 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
                 self.setFormat(m.start(), m.end() - m.start(), fmt)
 
 
-# ── Haupt-Widget ─────────────────────────────────────────────────────────────
+# ── Attach-Popup ──────────────────────────────────────────────────────────────
+class AttachPopup(QtWidgets.QFrame):
+    sig_files = QtCore.Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent, QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose, False)
+        grid = QtWidgets.QGridLayout(self)
+        grid.setContentsMargins(10, 8, 10, 10)
+        grid.setSpacing(8)
+        title = QtWidgets.QLabel(t("popup_title"))
+        title.setAlignment(QtCore.Qt.AlignCenter)
+        grid.addWidget(title, 0, 0, 1, 2)
+        btn_photos = QtWidgets.QPushButton(f"🖼\n{t('popup_photos')}")
+        btn_photos.setFixedSize(80, 60)
+        btn_photos.clicked.connect(self._pick_photos)
+        btn_photos.clicked.connect(self.hide)
+        grid.addWidget(btn_photos, 1, 0)
+        btn_files = QtWidgets.QPushButton(f"📄\n{t('popup_files')}")
+        btn_files.setFixedSize(80, 60)
+        btn_files.clicked.connect(self._pick_files)
+        btn_files.clicked.connect(self.hide)
+        grid.addWidget(btn_files, 1, 1)
+        self.adjustSize()
+
+    def _pick_photos(self):
+        files, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, t("popup_photos"), "",
+            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Alle (*)")
+        if files:
+            self.sig_files.emit(files)
+
+    def _pick_files(self):
+        files, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, t("popup_files"), "",
+            "Dateien (*.py *.txt *.step *.stp *.fcstd *.csv *.json);;Alle (*)")
+        if files:
+            self.sig_files.emit(files)
+
+    def show_above(self, widget: QtWidgets.QWidget):
+        self._apply_theme()
+        pos = widget.mapToGlobal(QtCore.QPoint(0, 0))
+        self.adjustSize()
+        self.move(pos.x(), pos.y() - self.height() - 4)
+        self.show()
+
+    def _apply_theme(self):
+        try:
+            parent = self.parent()
+            pix = parent.grab(QtCore.QRect(
+                parent.width() // 2 - 2, parent.height() // 2 - 2, 4, 4))
+            img = pix.toImage()
+            r = g = b = 0
+            for x in range(4):
+                for y in range(4):
+                    c  = QtGui.QColor(img.pixel(x, y))
+                    r += c.red(); g += c.green(); b += c.blue()
+            bg = QtGui.QColor(r // 16, g // 16, b // 16)
+        except Exception:
+            bg = QtGui.QColor(45, 45, 45)
+
+        is_dark = bg.lightness() < 128
+        if is_dark:
+            popup_bg = bg.lighter(145).name()
+            btn_bg   = bg.lighter(170).name()
+            btn_txt  = "#e8e8e8"
+            txt      = "#d8d8d8"
+            border   = bg.lighter(200).name()
+            hl       = "#3a7bd5"
+            hl_txt   = "#ffffff"
+        else:
+            popup_bg = bg.darker(108).name()
+            btn_bg   = bg.darker(103).name()
+            btn_txt  = "#1a1a1a"
+            txt      = "#1a1a1a"
+            border   = bg.darker(135).name()
+            hl       = "#2979ff"
+            hl_txt   = "#ffffff"
+
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {popup_bg};
+                border: 1px solid {border};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: {txt};
+                background: transparent;
+                border: none;
+            }}
+            QPushButton {{
+                background-color: {btn_bg};
+                color: {btn_txt};
+                border: 1px solid {border};
+                border-radius: 6px;
+                font-size: 13px;
+                padding: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {hl};
+                color: {hl_txt};
+                border: 1px solid {hl};
+            }}
+            QPushButton:pressed {{
+                background-color: {hl};
+                color: {hl_txt};
+            }}
+        """)
+
+
+# ── AttachmentBar ─────────────────────────────────────────────────────────────
+class AttachmentBar(QtWidgets.QWidget):
+    changed = QtCore.Signal()
+    IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'}
+    TILE = 56
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._paths: list = []
+        self.setAcceptDrops(True)
+        self.setVisible(False)
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(2, 2, 2, 2)
+        self._scroll = QtWidgets.QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self._scroll.setFixedHeight(self.TILE + 26)
+        self._scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self._inner = QtWidgets.QWidget()
+        self._flow  = QtWidgets.QHBoxLayout(self._inner)
+        self._flow.setAlignment(QtCore.Qt.AlignLeft)
+        self._flow.setSpacing(4)
+        self._scroll.setWidget(self._inner)
+        lay.addWidget(self._scroll)
+
+    @property
+    def paths(self):
+        return list(self._paths)
+
+    def add_files(self, file_list: list):
+        for p in file_list:
+            if p not in self._paths:
+                self._paths.append(p)
+                self._add_tile(p)
+        self.setVisible(True)
+        self.changed.emit()
+
+    def clear_all(self):
+        self._paths.clear()
+        while self._flow.count():
+            item = self._flow.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.setVisible(False)
+        self.changed.emit()
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        paths = [u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()]
+        if paths:
+            self.add_files(paths)
+        e.acceptProposedAction()
+
+    def _add_tile(self, path: str):
+        ext  = os.path.splitext(path)[1].lower()
+        tile = QtWidgets.QFrame()
+        tile.setFixedSize(self.TILE + 4, self.TILE + 20)
+        tl = QtWidgets.QVBoxLayout(tile)
+        tl.setContentsMargins(2, 2, 2, 2)
+        tl.setSpacing(1)
+        prev = QtWidgets.QLabel()
+        prev.setFixedSize(self.TILE, self.TILE)
+        prev.setAlignment(QtCore.Qt.AlignCenter)
+        if ext in self.IMAGE_EXTS:
+            pix = QtGui.QPixmap(path)
+            if not pix.isNull():
+                prev.setPixmap(pix.scaled(self.TILE, self.TILE,
+                    QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+            else:
+                prev.setText("🖼")
+        else:
+            icons = {'.py':'🐍', '.step':'📦', '.stp':'📦',
+                     '.fcstd':'⚙', '.csv':'📊', '.json':'{}'}
+            prev.setText(icons.get(ext, '📄'))
+        tl.addWidget(prev)
+        name = os.path.basename(path)
+        lbl = QtWidgets.QLabel(name[:9] + "…" if len(name) > 9 else name)
+        lbl.setAlignment(QtCore.Qt.AlignCenter)
+        tl.addWidget(lbl)
+        rm = QtWidgets.QPushButton("✕", tile)
+        rm.setFixedSize(14, 14)
+        rm.move(self.TILE - 4, 2)
+        rm.setStyleSheet(
+            f"background:{_DANGER}; color:white; border-radius:7px;"
+            "font-size:8px; padding:0; min-height:0; border:none;"
+        )
+        rm.clicked.connect(lambda _, p=path, w=tile: self._remove(p, w))
+        tile.setToolTip(path)
+        self._flow.addWidget(tile)
+
+    def _remove(self, path, widget):
+        if path in self._paths:
+            self._paths.remove(path)
+        self._flow.removeWidget(widget)
+        widget.deleteLater()
+        if not self._paths:
+            self.setVisible(False)
+        self.changed.emit()
+
+
+# ── Haupt-Widget ──────────────────────────────────────────────────────────────
 class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
 
     SYSTEM_PROMPT = (
         "You are a FreeCAD 1.1.1 Python expert. "
         "Reply ONLY with pure Python code, NO explanations, NO markdown fences.\n\n"
         "MANDATORY RULES:\n"
+        "- ALWAYS use 'App' instead of 'FreeCAD' and 'Gui' instead of 'FreeCADGui'\n"
+        "- ALWAYS start with: doc = App.ActiveDocument or App.newDocument('Part')\n"
         "- Boolean ops ONLY like this:\n"
-        "    result = a.cut(b)   # subtraction\n"
-        "    result = a.fuse(b)  # union\n"
+        "    result = a.cut(b)\n"
+        "    result = a.fuse(b)\n"
         "- NEVER use -= or += on Part objects\n"
         "- After every boolean op write the result into the document:\n"
         "    obj = doc.addObject('Part::Feature', 'Name')\n"
@@ -385,9 +544,11 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
         "- No .Support, no saveCopy, no export\n\n"
         "EXAMPLE – 40mm cube with 10mm diameter hole:\n"
         "import Part\n"
-        "cube     = Part.makeBox(40.0, 40.0, 40.0)\n"
-        "cyl      = Part.makeCylinder(5.0, 40.0, App.Vector(20.0,20.0,0.0), App.Vector(0,0,1))\n"
-        "result   = cube.cut(cyl)\n"
+        "doc = App.ActiveDocument\n"
+        "if doc is None: doc = App.newDocument('Part')\n"
+        "cube   = Part.makeBox(40.0, 40.0, 40.0)\n"
+        "cyl    = Part.makeCylinder(5.0, 40.0, App.Vector(20.0,20.0,0.0), App.Vector(0,0,1))\n"
+        "result = cube.cut(cyl)\n"
         "obj = doc.addObject('Part::Feature', 'CubeWithHole')\n"
         "obj.Shape = result\n"
         "doc.recompute()\n"
@@ -395,19 +556,51 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
         "Understand the description regardless of language, but always output only Python code.\n"
     )
 
+    _LAYOUT_QSS = """
+        QPushButton#btn_icon {
+            min-width:  32px;
+            max-width:  32px;
+            padding: 0;
+            font-size: 16px;
+        }
+        QPushButton#btn_plus {
+            min-width:  28px;
+            max-width:  28px;
+            min-height: 28px;
+            max-height: 28px;
+            border: none;
+            background: transparent;
+            font-size: 15px;
+            font-weight: normal;
+            padding: 0;
+        }
+        QPushButton#btn_plus:hover {
+            background: rgba(128, 128, 128, 0.18);
+            border-radius: 14px;
+        }
+        QPushButton#btn_plus:pressed {
+            background: rgba(128, 128, 128, 0.32);
+            border-radius: 14px;
+        }
+    """
+
     def __init__(self):
         super().__init__()
         self.openrouter_key = "DEIN_KEY_HIER"
         self.worker = None
+        self.setStyleSheet(self._LAYOUT_QSS)
         self._build_ui()
+        QtCore.QTimer.singleShot(50, self._sync_heights)
         self._refresh_models()
 
+    # ── UI aufbauen ───────────────────────────────────────────────────────────
     def _build_ui(self):
         g = QtWidgets.QGridLayout(self)
         g.setSpacing(6)
         g.setContentsMargins(8, 8, 8, 8)
 
-        g.addWidget(QtWidgets.QLabel(t("source_label")), 0, 0, 1, 2)
+        g.addWidget(self._section_label(t("source_label")), 0, 0, 1, 2)
+
         self.source_box = QtWidgets.QComboBox()
         self.source_box.addItems([t("ollama"), t("openrouter")])
         self.source_box.currentIndexChanged.connect(self._refresh_models)
@@ -415,75 +608,197 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
 
         self.model_box = QtWidgets.QComboBox()
         g.addWidget(self.model_box, 2, 0)
-        btn_ref = QtWidgets.QPushButton("🔄")
-        btn_ref.setFixedWidth(35)
-        btn_ref.clicked.connect(self._refresh_models)
-        g.addWidget(btn_ref, 2, 1)
+
+        self.btn_ref = QtWidgets.QPushButton("↺")
+        self.btn_ref.setObjectName("btn_icon")
+        self.btn_ref.setToolTip(t("models_reload"))
+        self.btn_ref.clicked.connect(self._refresh_models)
+        g.addWidget(self.btn_ref, 2, 1)
 
         row_conn = QtWidgets.QHBoxLayout()
         self.conn_dot  = QtWidgets.QLabel("●")
         self.conn_dot.setFixedWidth(18)
         self.conn_info = QtWidgets.QLabel(t("not_checked"))
-        self.conn_info.setStyleSheet("color:gray; font-size:11px;")
         row_conn.addWidget(self.conn_dot)
         row_conn.addWidget(self.conn_info)
         row_conn.addStretch()
         g.addLayout(row_conn, 3, 0, 1, 2)
 
+        g.addWidget(self._divider(), 4, 0, 1, 2)
+
         wb_row = QtWidgets.QHBoxLayout()
-        wb_row.addWidget(QtWidgets.QLabel(t("workbench")))
+        wb_row.addWidget(self._section_label(t("workbench")))
         self.wb_label = QtWidgets.QLabel("…")
-        self.wb_label.setStyleSheet("color:#dcdcaa; font-weight:bold; font-size:11px;")
+        self.wb_label.setObjectName("wb_label")
         wb_row.addWidget(self.wb_label)
         wb_row.addStretch()
-        g.addLayout(wb_row, 4, 0, 1, 2)
+        g.addLayout(wb_row, 5, 0, 1, 2)
 
         spell_txt = t("spell_active", SPELL_LANG) if _DICT else t("spell_missing", SPELL_LANG)
-        spell_lbl = QtWidgets.QLabel(spell_txt)
-        spell_lbl.setStyleSheet("font-size:10px; color:gray;")
-        g.addWidget(spell_lbl, 5, 0, 1, 2)
+        g.addWidget(self._section_label(spell_txt), 6, 0, 1, 2)
+
+        temp_row = QtWidgets.QHBoxLayout()
+        temp_row.addWidget(self._section_label(t("temperature")))
+        self.temp_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.temp_slider.setRange(0, 10)
+        self.temp_slider.setValue(1)
+        self.temp_slider.setFixedWidth(90)
+        self.temp_label = QtWidgets.QLabel("0.1")
+        self.temp_label.setObjectName("temp_label")
+        self.temp_slider.valueChanged.connect(
+            lambda v: self.temp_label.setText(f"{v/10:.1f}"))
+        temp_row.addWidget(self.temp_slider)
+        temp_row.addWidget(self.temp_label)
+        temp_row.addStretch()
+        g.addLayout(temp_row, 7, 0, 1, 2)
+
+        g.addWidget(self._divider(), 8, 0, 1, 2)
+
+        self.att_bar = AttachmentBar()
+        g.addWidget(self.att_bar, 9, 0, 1, 2)
+
+        input_frame = QtWidgets.QFrame()
+        input_frame.setObjectName("input_frame")
+        input_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        input_lay = QtWidgets.QVBoxLayout(input_frame)
+        input_lay.setContentsMargins(0, 0, 0, 0)
+        input_lay.setSpacing(0)
 
         self.input_text = SpellTextEdit()
-        self.input_text.setStyleSheet(
-            "background-color:#2b2b2b; color:#f0f0f0; font-size:12px;")
         self.input_text.setPlaceholderText(t("placeholder"))
         self.input_text.setFixedHeight(90)
-        g.addWidget(self.input_text, 6, 0, 1, 2)
+        input_lay.addWidget(self.input_text)
+
+        self._popup = AttachPopup(self)
+        self._popup.sig_files.connect(self.att_bar.add_files)
+
+        self.btn_plus = QtWidgets.QPushButton("+", self.input_text)
+        self.btn_plus.setObjectName("btn_plus")
+        self.btn_plus.setFlat(True)
+        self.btn_plus.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.btn_plus.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_plus.clicked.connect(lambda: self._popup.show_above(self.btn_plus))
+
+        orig_resize = self.input_text.resizeEvent
+        def _on_input_resize(event, orig=orig_resize):
+            orig(event)
+            self._place_plus()
+        self.input_text.resizeEvent = _on_input_resize
+
+        g.addWidget(input_frame, 10, 0, 1, 2)
 
         self.btn_ask = QtWidgets.QPushButton(t("btn_generate"))
-        self.btn_ask.setStyleSheet(
-            "background-color:#444;color:white;padding:8px;font-weight:bold;")
+        self.btn_ask.setObjectName("btn_generate")
         self.btn_ask.clicked.connect(self._handle_request)
-        g.addWidget(self.btn_ask, 7, 0, 1, 2)
+
+        self.btn_clr = QtWidgets.QPushButton("🗑")
+        self.btn_clr.setObjectName("btn_icon")
+        self.btn_clr.setToolTip(t("history_clear"))
+        self.btn_clr.clicked.connect(self._clear_history)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.setSpacing(6)
+        btn_row.addWidget(self.btn_ask)
+        btn_row.addWidget(self.btn_clr)
+        g.addLayout(btn_row, 11, 0, 1, 2)
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setRange(0, 0)
-        self.progress.setFixedHeight(6)
         self.progress.setTextVisible(False)
         self.progress.setVisible(False)
-        g.addWidget(self.progress, 8, 0, 1, 2)
+        self.progress.setMaximumHeight(6)
+        g.addWidget(self.progress, 12, 0, 1, 2)
 
         self.status_lbl = QtWidgets.QLabel(t("ready"))
-        self.status_lbl.setStyleSheet("color:gray; font-size:11px; padding:2px 0;")
-        g.addWidget(self.status_lbl, 9, 0, 1, 2)
+        self.status_lbl.setObjectName("status_lbl")
+        g.addWidget(self.status_lbl, 13, 0, 1, 2)
 
         self.code_display = QtWidgets.QPlainTextEdit()
-        self.code_display.setStyleSheet(
-            "background-color:#1e1e1e; color:#a9b7c6; "
-            "font-family:'Monospace'; font-size:12px;")
+        self.code_display.setFont(QtGui.QFont("Monospace", 11))
         PythonHighlighter(self.code_display.document())
-        g.addWidget(self.code_display, 10, 0, 1, 2)
-        g.setRowStretch(10, 1)
+        g.addWidget(self.code_display, 14, 0, 1, 2)
+        g.setRowStretch(14, 1)
 
         self.btn_run = QtWidgets.QPushButton(t("btn_apply"))
-        self.btn_run.setFixedHeight(40)
-        self.btn_run.setStyleSheet(
-            "background-color:#2e7d32;color:white;font-weight:bold;")
+        self.btn_run.setObjectName("btn_apply")
         self.btn_run.clicked.connect(self._execute_code)
-        g.addWidget(self.btn_run, 11, 0, 1, 2)
 
-    def _set_conn(self, ok, text):
-        color = "#4caf50" if ok else "#f44336"
+        self.btn_copy = QtWidgets.QPushButton("📋")
+        self.btn_copy.setObjectName("btn_icon")
+        self.btn_copy.setToolTip(t("copy_code"))
+        self.btn_copy.clicked.connect(self._copy_code)
+
+        apply_row = QtWidgets.QHBoxLayout()
+        apply_row.setSpacing(6)
+        apply_row.addWidget(self.btn_run)
+        apply_row.addWidget(self.btn_copy)
+        g.addLayout(apply_row, 15, 0, 1, 2)
+
+    # ── Höhen-Synchronisation ─────────────────────────────────────────────────
+    def _sync_heights(self):
+        def _h(widget):
+            h = widget.geometry().height()
+            return h if h > 0 else widget.sizeHint().height()
+
+        h_combo = _h(self.model_box)
+        if h_combo > 0:
+            self.btn_ref.setFixedSize(h_combo, h_combo)
+
+        h_ask = _h(self.btn_ask)
+        if h_ask > 0:
+            self.btn_clr.setFixedSize(h_ask, h_ask)
+
+        h_run = _h(self.btn_run)
+        if h_run > 0:
+            self.btn_copy.setFixedSize(h_run, h_run)
+
+        self._apply_plus_color()
+        self._place_plus()
+
+    def _apply_plus_color(self):
+        color = self.palette().windowText().color().name()
+        self.btn_plus.setStyleSheet(
+            f"QPushButton#btn_plus {{"
+            f"  border:none; background:transparent;"
+            f"  font-size:15px; font-weight:normal; padding:0;"
+            f"  color:{color};"
+            f"}}"
+            "QPushButton#btn_plus:hover {"
+            "  background:rgba(128,128,128,0.18); border-radius:14px;"
+            "}"
+            "QPushButton#btn_plus:pressed {"
+            "  background:rgba(128,128,128,0.32); border-radius:14px;"
+            "}"
+        )
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QtCore.QEvent.PaletteChange:
+            self._apply_plus_color()
+
+    def _place_plus(self):
+        btn_h = self.btn_plus.height() or 28
+        y = self.input_text.height() - btn_h - 6
+        self.btn_plus.move(6, max(y, 4))
+        self.btn_plus.raise_()
+
+    # ── Hilfsmethoden ─────────────────────────────────────────────────────────
+    def _section_label(self, text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        font = lbl.font()
+        font.setPointSizeF(font.pointSizeF() * 0.85)
+        font.setBold(True)
+        lbl.setFont(font)
+        return lbl
+
+    def _divider(self) -> QtWidgets.QFrame:
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        return line
+
+    def _set_conn(self, ok: bool, text: str):
+        color = _STATUS_OK if ok else _STATUS_ERR
         self.conn_dot.setStyleSheet(f"color:{color}; font-size:14px;")
         self.conn_info.setText(text)
         self.conn_info.setStyleSheet(f"color:{color}; font-size:11px;")
@@ -494,6 +809,16 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
         self.btn_run.setEnabled(not busy)
         self.status_lbl.setText(msg if msg else (t("ready") if not busy else ""))
         QtWidgets.QApplication.processEvents()
+
+    def _clear_history(self):
+        self.input_text.clear()
+        self.status_lbl.setText("🗑  " + t("history_clear"))
+
+    def _copy_code(self):
+        QtWidgets.QApplication.clipboard().setText(self.code_display.toPlainText())
+
+    def _temperature(self) -> float:
+        return self.temp_slider.value() / 10.0
 
     def _refresh_models(self):
         import requests
@@ -541,37 +866,43 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
             wb_name = "Unknown"
         labels = {
             "PartDesignWorkbench": "Part Design",
-            "PartWorkbench": "Part",
-            "MeshWorkbench": "Mesh",
+            "PartWorkbench":       "Part",
+            "MeshWorkbench":       "Mesh",
         }
         self.wb_label.setText(labels.get(wb_name, wb_name))
         wb_hints = {
-            "PartDesignWorkbench": (
-                "Active workbench: PART DESIGN.\n"
-                "MANDATORY: Always Body → Sketch → Pad/Pocket. NEVER Part.makeBox!\n"
-            ),
-            "PartWorkbench": (
-                "Active workbench: PART.\n"
-                "Use Part primitives and boolean ops: makeBox/makeCylinder/makeSphere, cut()/fuse().\n"
-            ),
-            "MeshWorkbench": (
-                "Active workbench: MESH. Use import Mesh.\n"
-            ),
+            "PartDesignWorkbench": "Active workbench: PART DESIGN.\nMANDATORY: Always Body → Sketch → Pad/Pocket. NEVER Part.makeBox!\n",
+            "PartWorkbench":       "Active workbench: PART.\nUse Part primitives and boolean ops: makeBox/makeCylinder/makeSphere, cut()/fuse().\n",
+            "MeshWorkbench":       "Active workbench: MESH. Use import Mesh.\n",
         }
-        wb_hint = wb_hints.get(wb_name, f"Active workbench: {wb_name}.\n")
-        return self.SYSTEM_PROMPT + wb_hint
+        return self.SYSTEM_PROMPT + wb_hints.get(wb_name, f"Active workbench: {wb_name}.\n")
 
     def _handle_request(self):
         prompt = self.input_text.toPlainText().strip()
-        if not prompt:
+        if not prompt and not self.att_bar.paths:
             self.status_lbl.setText(t("no_input"))
             return
         self._set_busy(True, t("thinking"))
+        att_data = []
+        for p in self.att_bar.paths:
+            ext = os.path.splitext(p)[1].lower()
+            if ext in AttachmentBar.IMAGE_EXTS:
+                with open(p, "rb") as f:
+                    b64  = base64.b64encode(f.read()).decode()
+                    mime = "image/png" if ext == ".png" else "image/jpeg"
+                    att_data.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            else:
+                try:
+                    with open(p, "r", encoding="utf-8", errors="replace") as f:
+                        prompt += f"\n\n# Datei: {os.path.basename(p)}\n{f.read()}"
+                except Exception as e:
+                    prompt += f"\n\n# {os.path.basename(p)}: Lesefehler – {e}"
+
         source = self.source_box.currentText()
         model  = self.model_box.currentText()
         self.worker = QtCore.QThread()
         self._task = _APIWorker(source, model, prompt, self.openrouter_key,
-                                self._build_system_prompt())
+                                self._build_system_prompt(), self._temperature(), att_data)
         self._task.moveToThread(self.worker)
         self.worker.started.connect(self._task.run)
         self._task.done.connect(self._on_result)
@@ -595,37 +926,53 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
         for line in code.splitlines():
             s = line.strip()
             if not s:
-                result.append(''); continue
+                result.append('')
+                continue
             is_code = (
                 line[0] in (' ', '\t')
                 or s.startswith('#')
                 or re.match(r'^[a-zA-Z_][a-zA-Z0-9_.]*\s*[\(=\[\{:\+\-\*]', s)
-                or re.match(
-                    r'^(import|from|def|class|if|elif|else|for|while|'
-                    r'try|except|finally|with|return|raise|pass|break|'
-                    r'continue|print|doc|App|Gui|Part|math|Vector|'
-                    r'Placement|Rotation|True|False|None)\b', s)
+                or re.match(r'^(import|from|def|class|if|elif|else|for|while|'
+                            r'try|except|finally|with|return|raise|pass|break|'
+                            r'continue|print|doc|App|Gui|Part|math|Vector|FreeCAD|'
+                            r'Placement|Rotation|True|False|None)\b', s)
             )
             if is_code:
                 result.append(line)
         code = '\n'.join(result).strip()
-        code = re.sub(r'^(\s*)(\w+)\s*-=\s*(.+)$', r'\1\2 = \2.cut(\3)',   flags=re.MULTILINE, string=code)
-        code = re.sub(r'^(\s*)(\w+)\s*\+=\s*(.+)$', r'\1\2 = \2.fuse(\3)', flags=re.MULTILINE, string=code)
+        # FreeCAD → App / FreeCADGui → Gui (falls KI es trotzdem falsch macht)
+        code = re.sub(r'\bFreeCAD\.', 'App.', code)
+        code = re.sub(r'\bFreeCADGui\.', 'Gui.', code)
+        # Boolean-Operator-Shorthand normalisieren
+        code = re.sub(r'^(\s*)(\w+)\s*-=\s*(.+)$', r'\1\2 = \2.cut(\3)',     flags=re.MULTILINE, string=code)
+        code = re.sub(r'^(\s*)(\w+)\s*\+=\s*(.+)$', r'\1\2 = \2.fuse(\3)',   flags=re.MULTILINE, string=code)
         code = re.sub(r'^(\s*)(\w+)\s*\*=\s*(.+)$', r'\1\2 = \2.common(\3)', flags=re.MULTILINE, string=code)
         return code
 
     def _execute_code(self):
         code = self._clean(self.code_display.toPlainText())
         if not code or code.startswith("#"):
-            self.status_lbl.setText(t("no_code")); return
+            self.status_lbl.setText(t("no_code"))
+            return
         if App.ActiveDocument is None:
             App.newDocument("AI_Part")
         self._set_busy(True, t("running"))
         try:
             import Part, Sketcher, math
-            ns = {"App": App, "Gui": Gui, "Part": Part, "Sketcher": Sketcher,
-                  "math": math, "doc": App.ActiveDocument,
-                  "Vector": App.Vector, "Placement": App.Placement, "Rotation": App.Rotation}
+            # ── FIX: FreeCAD & FreeCADGui explizit in den Namespace ──────────
+            ns = {
+                "App":        App,
+                "Gui":        Gui,
+                "FreeCAD":    App,       # ← Hauptfix: 'FreeCAD' ist jetzt bekannt
+                "FreeCADGui": Gui,       # ← Hauptfix: 'FreeCADGui' ist jetzt bekannt
+                "Part":       Part,
+                "Sketcher":   Sketcher,
+                "math":       math,
+                "doc":        App.ActiveDocument,
+                "Vector":     App.Vector,
+                "Placement":  App.Placement,
+                "Rotation":   App.Rotation,
+            }
             exec(compile(code, "<AI-Code>", "exec"), ns)
             App.ActiveDocument.recompute()
             Gui.updateGui()
@@ -637,19 +984,23 @@ class FreeCAD_MultiAI_Panel(QtWidgets.QWidget):
                 t("syntax_msg", e.lineno, e.msg, e.text))
         except Exception as e:
             self._set_busy(False, f"❌ {t('runtime_err')}: {e}")
-            QtWidgets.QMessageBox.critical(None, t("runtime_err"),
-                t("runtime_msg", str(e)))
+            QtWidgets.QMessageBox.critical(None, t("runtime_err"), t("runtime_msg", str(e)))
 
 
-# ── Worker-Thread ────────────────────────────────────────────────────────────
+# ── Worker-Thread ─────────────────────────────────────────────────────────────
 class _APIWorker(QtCore.QObject):
     done  = QtCore.Signal(str)
     error = QtCore.Signal(str)
 
-    def __init__(self, source, model, prompt, key, system):
+    def __init__(self, source, model, prompt, key, system, temperature=0.1, att_data=None):
         super().__init__()
-        self.source = source; self.model = model
-        self.prompt = prompt; self.key = key; self.system = system
+        self.source      = source
+        self.model       = model
+        self.prompt      = prompt
+        self.key         = key
+        self.system      = system
+        self.temperature = temperature
+        self.att_data    = att_data or []
 
     def run(self):
         import requests
@@ -657,19 +1008,31 @@ class _APIWorker(QtCore.QObject):
             if t("ollama") in self.source:
                 r = requests.post(
                     "http://localhost:11434/api/generate",
-                    json={"model": self.model,
-                          "prompt": f"{self.system}\n\nTask: {self.prompt}",
-                          "stream": False}, timeout=600)
+                    json={
+                        "model":   self.model,
+                        "prompt":  f"{self.system}\n\nTask: {self.prompt}",
+                        "stream":  False,
+                        "options": {"temperature": self.temperature},
+                    },
+                    timeout=600)
                 r.raise_for_status()
                 self.done.emit(r.json().get("response", ""))
             else:
+                content = [{"type": "text", "text": self.prompt}] + self.att_data
                 r = requests.post(
                     "https://openrouter.ai/api/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {self.key}",
-                             "Content-Type": "application/json"},
-                    json={"model": self.model,
-                          "messages": [{"role": "system", "content": self.system},
-                                       {"role": "user",   "content": self.prompt}]},
+                    headers={
+                        "Authorization": f"Bearer {self.key}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "model":       self.model,
+                        "temperature": self.temperature,
+                        "messages": [
+                            {"role": "system",  "content": self.system},
+                            {"role": "user",    "content": content},
+                        ],
+                    },
                     timeout=60)
                 r.raise_for_status()
                 self.done.emit(r.json()["choices"][0]["message"]["content"])
@@ -677,7 +1040,7 @@ class _APIWorker(QtCore.QObject):
             self.error.emit(str(e))
 
 
-# ── Dock einbinden ───────────────────────────────────────────────────────────
+# ── Dock einbinden ────────────────────────────────────────────────────────────
 def add_ai_panel():
     mw = Gui.getMainWindow()
     for child in mw.findChildren(QtWidgets.QDockWidget):
@@ -689,7 +1052,6 @@ def add_ai_panel():
     dock = QtWidgets.QDockWidget("KI Multi-Source Assistent")
     dock.setWidget(panel)
     dock.setMinimumWidth(200)
-    dock.setMaximumWidth(16777215)
     dock.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
     mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
